@@ -4,8 +4,15 @@ import type { Profile } from "@/lib/types";
 import { getProfile, ensureProfile } from "@/lib/db/profiles";
 
 const SESSION_COOKIE = "shopfree_session";
-// 用固定密钥签名（Demo 项目，生产环境应用环境变量）
+
+// 会话签名密钥：优先读取环境变量；未配置时回退到内置默认值并给出警告。
+// 生产环境必须通过 .env.local 配置强随机 SESSION_SECRET，否则会话可被伪造。
 const SIGNING_KEY = process.env.SESSION_SECRET || "sf_demo_local_key_2026";
+if (!process.env.SESSION_SECRET && process.env.NODE_ENV !== "production") {
+  console.warn(
+    "[auth] 未配置 SESSION_SECRET，正在使用内置默认密钥，会话签名可被伪造。请在 .env.local 中配置强随机 SESSION_SECRET。"
+  );
+}
 
 /** PBKDF2 哈希密码 */
 export function hashPassword(password: string): string {
@@ -22,9 +29,11 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(computed));
 }
 
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 天
+
 /** 创建签名 Cookie 值: userId.expiry.signature */
-function signToken(userId: string): string {
-  const expiry = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 天
+function signToken(userId: string, maxAgeSeconds: number): string {
+  const expiry = Date.now() + maxAgeSeconds * 1000;
   const payload = `${userId}.${expiry}`;
   const sig = crypto.createHmac("sha256", SIGNING_KEY).update(payload).digest("hex");
   return `${payload}.${sig}`;
@@ -43,16 +52,17 @@ function verifyToken(token: string): string | null {
   return userId;
 }
 
-/** 设置登录 Cookie */
-export async function setSession(userId: string) {
-  const token = signToken(userId);
+/** 设置登录 Cookie；remember=false 时仅保留 1 天，降低账号风险 */
+export async function setSession(userId: string, remember = true) {
+  const maxAge = remember ? SESSION_MAX_AGE : 24 * 60 * 60;
+  const token = signToken(userId, maxAge);
   const ck = await cookies();
   ck.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 7 * 24 * 60 * 60, // 7 天
+    maxAge,
   });
 }
 

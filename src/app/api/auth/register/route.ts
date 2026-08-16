@@ -14,18 +14,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const { email, password, username } = parsed.data;
+    const { email, password, username, remember } = parsed.data;
 
     const existing = await findProfileByEmail(email);
     if (existing) {
       return NextResponse.json(
-        { error: "duplicate", message: "该邮箱已被注册" },
+        { error: "duplicate", message: "该邮箱已被注册，请直接登录" },
         { status: 409 }
       );
     }
 
     const user = await createProfile(username, email, hashPassword(password));
-    await setSession(user.id);
+    await setSession(user.id, remember);
 
     return NextResponse.json({ user: { id: user.id, email: user.email, username: user.username } });
   } catch (err) {

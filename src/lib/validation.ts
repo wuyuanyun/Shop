@@ -16,12 +16,15 @@ export const favoriteSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.string().email("邮箱格式不正确"),
-  password: z.string().min(6, "密码至少 6 位"),
+  email: z.string().trim().toLowerCase().email("邮箱格式不正确"),
+  // 登录不限制最小长度：兼容历史账号，强度校验在注册时执行
+  password: z.string().min(1, "请输入密码"),
+  remember: z.boolean().optional().default(false),
 });
 
 export const registerSchema = loginSchema.extend({
-  username: z.string().min(2, "用户名至少 2 个字符").max(30),
+  username: z.string().trim().min(2, "用户名至少 2 个字符").max(30),
+  password: z.string().min(8, "密码至少 8 位"),
 });
 
 export const orderStatusSchema = z.object({

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { loginSchema } from "@/lib/validation";
 import { findProfileByEmail } from "@/lib/db/profiles";
-import { hashPassword, verifyPassword, setSession } from "@/lib/auth";
+import { verifyPassword, setSession } from "@/lib/auth";
 
 export async function POST(req: Request) {
   try {
@@ -14,20 +14,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const { email, password } = parsed.data;
+    const { email, password, remember } = parsed.data;
 
-    // 特殊处理：第一次启动时没有用户，允许任意邮箱+密码注册
     const user = await findProfileByEmail(email);
     if (!user) {
-      // 自动注册（Demo 友好）
-      const { createProfile } = await import("@/lib/db/profiles");
-      const newUser = await createProfile(
-        email.split("@")[0],
-        email,
-        hashPassword(password)
+      // 邮箱不存在：明确提示先注册，不再自动建号
+      return NextResponse.json(
+        { error: "not_found", message: "该邮箱未注册，请先注册" },
+        { status: 401 }
       );
-      await setSession(newUser.id);
-      return NextResponse.json({ user: { id: newUser.id, email: newUser.email } });
     }
 
     if (!user.password_hash) {
@@ -44,8 +39,10 @@ export async function POST(req: Request) {
       );
     }
 
-    await setSession(user.id);
-    return NextResponse.json({ user: { id: user.id, email: user.email } });
+    await setSession(user.id, remember);
+    return NextResponse.json({
+      user: { id: user.id, email: user.email, username: user.username },
+    });
   } catch (err) {
     console.error("Login error:", err instanceof Error ? err.message : String(err));
     return NextResponse.json(
